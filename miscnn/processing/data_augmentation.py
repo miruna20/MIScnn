@@ -170,6 +170,7 @@ class Data_Augmentation:
                 aug_seg_data = np.concatenate((augmentation[seg_label],
                                               aug_seg_data), axis=0)
         # Transform data from channel-first back to channel-last structure
+        #Bookmark
         # Data structure channel-first 3D:  (batch, channel, x, y, z)
         # Data structure channel-last 3D:   (batch, x, y, z, channel)
         aug_img_data = np.moveaxis(aug_img_data, 1, -1)

@@ -3,9 +3,6 @@
 #  Copyright:    2020 IT-Infrastructure for Translational Medical Research,    #
 #                University of Augsburg                                        #
 #                                                                              #
-#  Contributions: Michael Lempart, 2020 Department of Radiation Physics,       #
-#                                  Lund University                             #
-#                                                                              #
 #  This program is free software: you can redistribute it and/or modify        #
 #  it under the terms of the GNU General Public License as published by        #
 #  the Free Software Foundation, either version 3 of the License, or           #
@@ -26,12 +23,13 @@
 import numpy as np
 from tensorflow.keras.utils import to_categorical
 import threading
-import multiprocessing as mp
-from functools import partial
 # Internal libraries/scripts
+from tensorflow.python.keras.utils import tf_utils
+
 from miscnn.processing.data_augmentation import Data_Augmentation
 from miscnn.processing.batch_creation import create_batches
 from miscnn.utils.patch_operations import slice_matrix, concat_matrices, pad_patch, crop_patch
+import tensorflow as tf
 
 #-----------------------------------------------------#
 #                 Preprocessor class                  #
@@ -70,12 +68,11 @@ class Preprocessor:
                                                 For Example: (64,128,128) for 64x128x128 patch cubes.
                                                 Be aware that the x-axis represents the number of slices in 3D volumes.
                                                 This parameter will be redundant if fullimage or patchwise-crop analysis is selected!!
-        use_multiprocessing (boolean):          Uses multi-threading to prepare subfunctions if True (parallelized).
     """
     def __init__(self, data_io, batch_size, subfunctions=[],
                  data_aug=Data_Augmentation(), prepare_subfunctions=False,
                  prepare_batches=False, analysis="patchwise-crop",
-                 patch_shape=None, use_multiprocessing=False):
+                 patch_shape=None):
         # Parse Data Augmentation
         if isinstance(data_aug, Data_Augmentation):
             self.data_augmentation = data_aug
@@ -98,7 +95,6 @@ class Preprocessor:
         self.prepare_batches = prepare_batches
         self.analysis = analysis
         self.patch_shape = patch_shape
-        self.use_multiprocessing = use_multiprocessing
 
     #---------------------------------------------#
     #               Class variables               #
@@ -112,7 +108,6 @@ class Preprocessor:
                                             # The function create_batches will use this queue to create batches
     cache = dict()                          # Cache additional information and data for patch assembling after patchwise prediction
     thread_lock = threading.Lock()          # Create a threading lock for multiprocessing
-    mp_threads = 5                          # Number of threads used to prepare subfunctions if use_multiprocessing is set to True
 
     #---------------------------------------------#
     #               Prepare Batches               #
@@ -132,9 +127,14 @@ class Preprocessor:
             # Load sample from file with already processed subfunctions
             else : sample = self.data_io.sample_loader(index, backup=True)
             # Transform digit segmentation classes into categorical
+
+            # Do not allow segmentation to have more than 1 channel (make compatible with Binary CE loss)
+            """
             if training:
                 sample.seg_data = to_categorical(sample.seg_data,
                                                  num_classes=sample.classes)
+            
+            """
             # Decide if data augmentation should be performed
             if training and not validation and self.data_augmentation is not None:
                 data_aug = True
@@ -206,7 +206,22 @@ class Preprocessor:
         # For fullimages remove the batch axis
         else : prediction = np.squeeze(prediction, axis=0)
         # Transform probabilities to classes
-        if not activation_output : prediction = np.argmax(prediction, axis=-1)
+        #ToDo here made a change to the argmax function
+        #if not activation_output : prediction = np.argmax(prediction, axis=-1)
+        if not activation_output:
+            #apply sigmoid as activation function
+            #
+            #prediction = tf.keras.activations.sigmoid(prediction)
+
+            #transform the results into a numpy array
+            prediction = tf_utils.to_numpy_or_python_type(prediction)
+            prediction = np.reshape(prediction,(96,128,128))
+
+            #bring to label 1 (vertebra) if above a threshold
+            for pixel in np.nditer(prediction, op_flags=['readwrite']):
+                if pixel < 0.5:
+                    pixel[...] = 0
+                else: pixel[...] = 1
         # Run Subfunction postprocessing on the prediction
         for sf in reversed(self.subfunctions):
             prediction = sf.postprocessing(prediction)
@@ -216,31 +231,17 @@ class Preprocessor:
     #---------------------------------------------#
     #               Run Subfunctions              #
     #---------------------------------------------#
-    # Iterate over all samples, process subfunctions on each and backup
-    # preprocessed samples to disk
+    # Preprocess data through subfunctions and backup samples
     def run_subfunctions(self, indices_list, training=True):
-        # Prepare subfunctions using single threading
-        if not self.use_multiprocessing or not training:
-            for index in indices_list:
-                self.prepare_sample_subfunctions(index, training)
-        # Prepare subfunctions using multiprocessing
-        else:
-            pool = mp.Pool(int(self.mp_threads))
-            pool.map(partial(self.prepare_sample_subfunctions,
-                             training=training),
-                     indices_list)
-            pool.close()
-            pool.join()
-
-    # Wrapper function to process subfunctions for a single sample
-    def prepare_sample_subfunctions(self, index, training):
-        # Load sample
-        sample = self.data_io.sample_loader(index, load_seg=training)
-        # Run provided subfunctions on imaging data
-        for sf in self.subfunctions:
-            sf.preprocessing(sample, training=training)
-        # Backup sample as pickle to disk
-        self.data_io.backup_sample(sample)
+        # Iterate over all samples
+        for index in indices_list:
+            # Load sample
+            sample = self.data_io.sample_loader(index, load_seg=training)
+            # Run provided subfunctions on imaging data
+            for sf in self.subfunctions:
+                sf.preprocessing(sample, training=training)
+            # Backup sample as pickle to disk
+            self.data_io.backup_sample(sample)
 
     #---------------------------------------------#
     #           Patch-wise grid Analysis          #

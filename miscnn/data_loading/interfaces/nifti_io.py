@@ -40,13 +40,14 @@ https://github.com/neheller/kits19
 """
 class NIFTI_interface(Abstract_IO):
     # Class variable initialization
-    def __init__(self, channels=1, classes=2, three_dim=True, pattern=None):
+    def __init__(self, channels=1, classes=2, three_dim=True, pattern=None, duplicate=False):
         self.data_directory = None
         self.channels = channels
         self.classes = classes
         self.three_dim = three_dim
         self.pattern = pattern
         self.cache = dict()
+        self.duplicate = duplicate
 
     #---------------------------------------------#
     #                  initialize                 #
@@ -87,7 +88,14 @@ class NIFTI_interface(Abstract_IO):
         vol_data = vol.get_fdata()
         # Save spacing in cache
         self.cache[index] = vol.affine
-        # Return volume
+
+        #after reading the image try to duplicate, reshape and concatenate in the 4th dimension to obtain 2 feature channels
+        if(self.duplicate):
+            temp2 = vol.get_fdata()
+            temp = np.reshape(vol_data,[vol_data.shape[0],vol_data.shape[1],vol_data.shape[2],1])
+            temp2 = np.reshape(vol_data, [temp2.shape[0], temp2.shape[1], temp2.shape[2], 1])
+            vol_data = np.concatenate((temp,temp2),axis=3)
+
         return vol_data
 
     #---------------------------------------------#
@@ -168,7 +176,7 @@ class NIFTI_interface(Abstract_IO):
             )
         # Convert numpy array to NIFTI
         nifti = nib.Nifti1Image(pred, None)
-        #nifti.get_data_dtype() == pred.dtype
+        nifti.get_data_dtype() == pred.dtype
         # Save segmentation to disk
         pred_file = str(index) + ".nii.gz"
         nib.save(nifti, os.path.join(output_path, pred_file))

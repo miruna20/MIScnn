@@ -22,3 +22,6 @@ from miscnn.processing.subfunctions.resampling import Resampling
 from miscnn.processing.subfunctions.resize import Resize
 from miscnn.processing.subfunctions.padding import Padding
 from miscnn.processing.subfunctions.transform_HU import TransformHU
+from miscnn.processing.subfunctions.disordering import Disordering
+from miscnn.processing.subfunctions.scaling import Scaling
+

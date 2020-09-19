@@ -68,9 +68,45 @@ class Neural_Network:
         input_shape = (None,)
         # Initialize model for 3D data
         if self.three_dim:
-            input_shape = (None, None, None, self.channels)
+            input_shape = (96, 128, 128, self.channels)
             self.model = architecture.create_model_3D(input_shape=input_shape,
                                                       n_labels=self.classes)
+
+            """
+                        for i, layer in enumerate(self.model.layers):
+                print(layer.name)
+                if (layer.name == "conv3d"):
+                    layer._name = "net/local/contracting/level0/conv0"
+                elif (layer.name == "conv3d_1"):
+                    layer._name = "net/local/contracting/level0/conv1"
+                elif (layer.name == "conv3d_2"):
+                    layer._name = "net/local/contracting/level1/conv0"
+                elif (layer.name == "conv3d_3"):
+                    layer._name = "net/local/contracting/level1/conv1"
+                elif (layer.name == "conv3d_4"):
+                    layer._name = "net/local/contracting/level2/conv0"
+                elif (layer.name == "conv3d_5"):
+                    layer._name = "net/local/contracting/level2/conv1"
+                elif (layer.name == "conv3d_6"):
+                    layer._name = "net/local/contracting/level3/conv0"
+                elif (layer.name == "conv3d_7"):
+                    layer._name = "net/local/contracting/level3/conv1"
+                elif (layer.name == "conv3d_8"):
+                    layer._name = "net/local/contracting/level4/conv0"
+                elif (layer.name == "conv3d_9"):
+                    layer._name = "net/local/contracting/level4/conv1"
+            #ToDo: print the shape of the weights
+            
+            for layer in self.model.layers:
+                weights = layer.get_weights()
+                print(layer.name)
+                for x in weights:
+                    print(x.shape)
+
+
+            """
+
+
          # Initialize model for 2D data
         else:
              input_shape = (None, None, self.channels)
@@ -80,8 +116,9 @@ class Neural_Network:
         if gpu_number > 1:
             self.model = multi_gpu_model(self.model, gpu_number)
         # Compile model
+        #ToDo change back here the run_eagerly if not in debug mode anymore
         self.model.compile(optimizer=Adam(lr=learninig_rate),
-                           loss=loss, metrics=metrics)
+                           loss=loss, metrics=metrics,run_eagerly=False)
         # Cache starting weights
         self.initialization_weights = self.model.get_weights()
         # Cache parameter
